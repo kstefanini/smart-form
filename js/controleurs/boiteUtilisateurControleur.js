@@ -33,6 +33,8 @@ smartFormApp.controller('BoiteUtilisateurControleur', function ($scope, $rootSco
 				// infos utilisateur
 				lthis.connaitreEtatUtilisateur();
 				lthis.retirerEnErreur();
+
+				lthis.utilisateur.mdp = '';
 			},
 			function(data) {
 				lthis.mettreEnErreur();
@@ -142,8 +144,7 @@ smartFormApp.controller('BoiteUtilisateurControleur', function ($scope, $rootSco
 		this.utilisateur.nom = "";
 		this.utilisateur.intitule = "";
 		this.utilisateur.courriel = "";
-		this.utilisateur.nomWiki = ""; // homonymes possibles
-		this.utilisateur.mdp = ""; // wtf ?
+		this.utilisateur.mdp = "";
 	};
 
 	/**
@@ -159,7 +160,6 @@ smartFormApp.controller('BoiteUtilisateurControleur', function ($scope, $rootSco
 			nom: infos.nom,
 			intitule: infos.intitule,
 			courriel: infos.sub,
-			nomWiki: infos.nomWiki
 		};
 
 		return utilisateur;

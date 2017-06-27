@@ -179,11 +179,10 @@ class SmartFloreService {
 			if ($valide === true) {
 				// décodage du courriel utilisateur depuis le jeton
 				$donneesJeton = $this->decoderJeton($jeton);
-				if ($donneesJeton != null && $donneesJeton["sub"] != "" && $donneesJeton["nomWiki"] != "") {
+				if ($donneesJeton != null && $donneesJeton["sub"] != "" && $donneesJeton["sub"] != "") {
 					// récupération de l'utilisateur
 					$utilisateur = array(
 						"courriel" => $donneesJeton["sub"],
-						"nomWiki" => $donneesJeton["nomWiki"],
 						"id" => $donneesJeton["id"]
 					);
 				}

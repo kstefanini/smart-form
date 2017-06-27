@@ -29,6 +29,18 @@ class Sentiers extends SmartFloreService {
 				// Pas d'authentification
 				$this->getPublicSentiers($requete);
 				break;
+			case 'pouet':
+				$this->getPouet();
+				break;
+			case 'pouetpseudo':
+				$this->getPouet('pseudo');
+				break;
+			case 'pouetnom':
+				$this->getPouet('nom');
+				break;
+			case 'pouetlol':
+				$this->pouetlol();
+				break;
 			default:
 				$this->error(400, "Aucune commande connue n'a été spécifiée");
 				break;
@@ -85,60 +97,105 @@ class Sentiers extends SmartFloreService {
 	 * tous les utilisateurs seront retournés.
 	 */
 	private function getSentiers() {
-
 		$this->verifierAuthentification();
-		$estAdmin = $this->estAdmin();
-		$utilisateur = $this->utilisateur['nomWiki'];
 
 		$requete = "SELECT t2.id as id, t2.resource as resource, t2.property as property, t2.value as value "
 			. "FROM " . $this->config['bdd']['table_prefixe'] . "_triples t1 "
 			. "JOIN " . $this->config['bdd']['table_prefixe'] . "_triples t2 ON t1.resource = t2.resource "
 			. "WHERE t1.property = " . $this->bdd->quote($this->triple_sentier) . " ";
-		if (! $estAdmin) {
-			$requete .= "AND t1.value = " . $this->bdd->quote($utilisateur);
+		if (! $this->estAdmin()) {
+			$requete .= "AND t1.value = " . $this->bdd->quote($this->utilisateur['courriel']);
 		}
 
 		$res = $this->bdd->query($requete);
 		$res = $res->fetchAll(PDO::FETCH_ASSOC);
 
-		$sentiersNommes = array();
-		foreach($res as $r) {
-			$nomSentier = $r['resource'];
-			if (!array_key_exists($nomSentier, $sentiersNommes)) {
-				$sentiersNommes[$nomSentier] = array(
-					'titre' => $nomSentier,
-					'fiches' => array()
-				);
-			}
-			// chargement des propriétés selon le triplet en cours
-			switch ($r['property']) {
-				case $this->triple_sentier:
-					$sentiersNommes[$nomSentier]['auteur'] = $r['value'];
-					$sentiersNommes[$nomSentier]['id'] = $r['id'];
-					break;
-				case $this->triple_sentier_meta:
-					$sentiersNommes[$nomSentier]['meta'] = $r['value'];
-					break;
-				case $this->triple_sentier_etat:
-					$sentiersNommes[$nomSentier]['etat'] = $r['value'];
-					break;
-				case $this->triple_sentier_date_creation:
-					$sentiersNommes[$nomSentier]['dateCreation'] = $r['value'];
-					break;
-				case $this->triple_sentier_date_derniere_modif:
-					$sentiersNommes[$nomSentier]['dateDerniereModif'] = $r['value'];
-					break;
-			}
-		}
-
-		// on retourne une liste et non un objet
-		$sentiers = array_values($sentiersNommes);
+		// on retourne une liste
+		$sentiers = array_values($this->miseEnFormeInfosSentiers($res));
 
 		$retour = array('pagination' => array('total' => count($sentiers)), 'resultats' => $sentiers);
 
 		header('Content-type: application/json');
 		echo json_encode($retour);
 		exit;
+	}
+
+	/**
+	 * @supprimer
+	 *
+	 * @param      string  $type   The type
+	 */
+	private function getPouet($type = '') {
+		$requete = "SELECT t2.id as id, t2.resource as resource, t2.property as property, t2.value as value "
+			. "FROM " . $this->config['bdd']['table_prefixe'] . "_triples t1 "
+			. "JOIN " . $this->config['bdd']['table_prefixe'] . "_triples t2 ON t1.resource = t2.resource "
+			. "WHERE t1.property = " . $this->bdd->quote($this->triple_sentier) . " ";
+
+		$res = $this->bdd->query($requete);
+		$res = $res->fetchAll(PDO::FETCH_ASSOC);
+
+		// on retourne une liste
+		$sentiers = array_values($this->miseEnFormeInfosSentiers($res));
+
+		$compteur = array();
+		foreach ($sentiers as $sentier) {
+			if (array_key_exists($sentier['auteur'], $compteur)) {
+				$compteur[$sentier['auteur']]++;
+			} else {
+				$compteur[$sentier['auteur']] = 1;
+			}
+		}
+
+		foreach (array_keys($compteur) as $auteur) {
+			echo '<a href="#' . $auteur . '">' . $auteur . '</a><br>';
+		}
+		echo 'count: ' . count(array_keys($compteur));
+
+		foreach (array_keys($compteur) as $auteur) {
+
+			$parts = preg_split('/(?=[A-Z])/', $auteur, -1, PREG_SPLIT_NO_EMPTY);
+
+			if (count($parts) > 0) {
+				$requete_pseudo = 'SELECT * FROM tela_prod_v4.NomWikiTest WHERE pseudo = "' . $auteur . '";';
+				$requete_nom = 'SELECT * FROM tela_prod_v4.NomWikiTest '
+					. 'WHERE nom LIKE "' . $parts[0] . '%" '
+					. 'OR prenom LIKE "' . $parts[0] . '%" ';
+				$requete_nomwiki = 'SELECT * FROM tela_prod_v4.NomWikiTest '
+					. 'WHERE prenom LIKE "' . $parts[0] . '%" ';
+				if (count($parts) > 1) {
+					$requete_nom .= 'OR nom LIKE "' . $parts[count($parts) - 1] . '%"';
+					$requete_nom .= 'OR prenom LIKE "' . $parts[count($parts) - 1] . '%"';
+
+					$requete_nomwiki .= 'AND nom LIKE "' . $parts[count($parts) - 1] . '%"';
+				}
+				$requete_nom .= ';';
+				$requete_nomwiki .= ';';
+
+				if ($type === 'nom') {
+					$res = $this->bdd->query($requete_nom);
+				} elseif ($type === 'pseudo') {
+					$res = $this->bdd->query($requete_pseudo);
+				} else {
+					$req = $this->bdd->query($requete_nomwiki);
+				}
+				$res = $res->fetchAll(PDO::FETCH_ASSOC);
+
+				echo '<br>';
+				echo '<h2>' . $auteur . '</h2>';
+				echo '<div id="' . $auteur . '">';
+				foreach ($res as $r) {
+					echo 'id: ' . $r['id'];
+					echo '<form action="pouetlol" method="get"><input type="hidden" value="'.$r['email'].'" name="email"><input type="hidden" value="'.$auteur.'" name="auteur"><input type="submit" value="caymoi"></form>';
+					echo 'nom: ' . $r['nom'];
+					echo ', prenom: ' . $r['prenom'];
+					echo ', pseudo: ' . $r['pseudo'];
+					echo 'email: ' . $r['email'] . '<br>';
+					echo 'NomWiki: ' . $r['NomWiki'] . '<br>';
+					echo '<hr>';
+				}
+				echo '</div>';
+			}
+		}
 	}
 
 	private function getSentierById($sentier_id) {
@@ -282,6 +339,9 @@ class Sentiers extends SmartFloreService {
 			$fiches_eflore[$fiche['resource']] = $fiche_eflore;
 		}
 
+		// Remplace l'adresse mail de l'auteur par ses infos publiques
+		$this->remplacerEmailParIntitule($sentier);
+
 		$sentier_details = $this->buildJsonInfosSentier($sentier, $meta, $localisation);
 
 		if ($localisation) {
@@ -319,8 +379,6 @@ class Sentiers extends SmartFloreService {
 				);
 			}
 
-			// génération d'un chemin minimaliste pour remplir les critères
-			// d'admissibilité @TODO remplacer par les vrais chemins
 			$sentier_details['chemin'] = $dessin_sentier;
 		}
 
@@ -357,6 +415,58 @@ class Sentiers extends SmartFloreService {
 	}
 
 	/**
+	 * Appelle l'annuaire pour récupérer l'intitulé publique d'un utilisateur
+	 *
+	 * @param      string  $email  The email
+	 *
+	 * @return     string  L'intitulé de l'utilisateur
+	 */
+	private function retrouverIntituleUtilisateur($email) {
+		$intitule = '';
+
+		$ch = curl_init();
+		curl_setopt_array($ch, array(
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_FAILONERROR => true,
+			// CURLOPT_URL => 'http://annuaire2.dev/service:annuaire:utilisateur/identite-par-courriel/'.$email
+			CURLOPT_URL => sprintf($this->config['service']['details_utilisateur_url'], $email)
+		));
+
+		$output = curl_exec($ch);
+
+		curl_close($ch);
+
+		$infos_utilisateur = array_values(json_decode($output, true))[0];
+
+		if (!empty($infos_utilisateur && array_key_exists('intitule', $infos_utilisateur))) {
+			$intitule = $infos_utilisateur['intitule'];
+		}
+
+		return $intitule;
+	}
+
+	/**
+	 * Remplace l'email de l'utilisateur
+	 *
+	 * Ne fait rien si l'utilisateur
+	 *
+	 * @param      <type>  $infos_sentier  The infos sentier
+	 */
+	private function remplacerEmailParIntitule(&$infos_sentier) {
+		$email = $infos_sentier['value'];
+
+		if (strpos($email, '@') > 0 && strpos($email, '@') < (strlen($email) - 1)) {
+			$intitule = $this->retrouverIntituleUtilisateur($infos_sentier['value']);
+			if ('' !== $intitule) {
+				$infos_sentier['value'] = $intitule;
+			} else {
+				// affectation par défaut pour éviter la fuite d'email dans la nature
+				$infos_sentier['value'] = 'utilisateur-mystère';
+			}
+		}
+	}
+
+	/**
 	 * Liste des sentiers PUBLICS - exclut les sentiers n'ayant pas de nom OU
 	 * zéro occurrence d'espèce OU un chemin de moins de deux points
 	 */
@@ -368,6 +478,9 @@ class Sentiers extends SmartFloreService {
 			// élimination des sentiers non valides (difficile à faire dans le
 			// SQL à cause des triplets)
 			if ($this->sentierPublicValide($infos_sentier)) {
+				// Remplace l'adresse mail de l'auteur par ses infos publiques
+				$this->remplacerEmailParIntitule($infos_sentier);
+
 				// formatage du sentier; devrait correspondre à
 				// http://floristic.org/wiki/wakka.php?wiki=FormatDonneesSentiers
 				$jsonInfosSentier = $this->buildJsonInfosSentier(
@@ -429,8 +542,7 @@ class Sentiers extends SmartFloreService {
 		}
 
 		$sentier_titre = $data['sentierTitre'];
-		$utilisateur = $this->utilisateur['nomWiki'];
-		$utilisateurCourriel = $this->utilisateur['courriel'];
+		$utilisateur = $this->utilisateur['courriel'];
 
 		$requete_existe = 'SELECT COUNT(resource) >= 1 as sentier_existe '.
 				'FROM '.$this->config['bdd']['table_prefixe'].'_triples '.
@@ -452,7 +564,7 @@ class Sentiers extends SmartFloreService {
 			$retour = ($res_insertion !== false) ? 'OK' : false;
 
 			if($retour == 'OK') {
-				$infos_evenement = array('utilisateur' => $utilisateur, 'utilisateur_courriel' => $utilisateurCourriel, 'titre' => $sentier_titre);
+				$infos_evenement = array('utilisateur' => $utilisateur, 'titre' => $sentier_titre);
 				// Enregistrement de l'évènement pour des stats ultérieures
 				$this->enregistrerEvenement($this->triple_evenement_sentier_ajout, $infos_evenement);
 			}
@@ -477,7 +589,7 @@ class Sentiers extends SmartFloreService {
 		}
 
 		$sentier_titre = $data['sentierTitre'];
-		$utilisateur = $this->utilisateur['nomWiki'];
+		$utilisateur = $this->utilisateur['courriel'];
 
 		$requete_suppression = 'DELETE FROM '.$this->config['bdd']['table_prefixe'].'_triples '.
 				'WHERE property = "'.$this->triple_sentier.'" '.
@@ -503,6 +615,7 @@ class Sentiers extends SmartFloreService {
 				.$this->bdd->quote($this->triple_sentier_date_creation).','
 				.$this->bdd->quote($this->triple_sentier_date_derniere_modif).','
 				.$this->bdd->quote($this->triple_sentier_localisation).','
+				.$this->bdd->quote($this->triple_sentier_etat).','
 				.$this->bdd->quote($this->triple_sentier_meta).')'
 				;
 		$res_suppression_proprietes = $this->bdd->exec($requete_suppression_proprietes);
@@ -591,7 +704,6 @@ class Sentiers extends SmartFloreService {
 		}
 
 		$sentier_titre = $data['sentierTitre'];
-		$utilisateur = $this->utilisateur['nomWiki'];
 		$page_tag = $data['pageTag'];
 
 		$requete_existe = 'SELECT COUNT(resource) > 1 as sentier_a_page_existe '.
@@ -758,6 +870,34 @@ class Sentiers extends SmartFloreService {
 
 		header('Content-type: text/plain');
 		echo $succes;
+	}
+
+	/**
+	 * @supprimer
+	 */
+	private function pouetlol() {
+		if (empty($auteur = $_GET['auteur']) || empty($email = $_GET['email'])) {
+			$this->error('400', 'Les paramètres auteur et email sont obligatoires');
+		}
+
+		$req = 'UPDATE '.$this->config['bdd']['table_prefixe'] . '_triples '
+			. 'SET value = ' . $this->bdd->quote($email)
+			. 'WHERE value = ' . $this->bdd->quote($auteur)
+			. 'AND property = ' . $this->bdd->quote($this->triple_sentier)
+		;
+
+		$reqFav = 'UPDATE '.$this->config['bdd']['table_prefixe'] . '_triples '
+			. 'SET value = ' . $this->bdd->quote($email)
+			. 'WHERE value = ' . $this->bdd->quote($auteur)
+			. 'AND property = ' . $this->bdd->quote($this->triple_favoris_fiche)
+		;
+
+		$this->bdd->exec($reqFav);
+
+		$this->bdd->exec($req);
+
+		header("Location: http://www.tela-botanica.org/eflore-test/smart-form/services/Sentiers.php/pouetnom");
+		die();
 	}
 
 	/**
